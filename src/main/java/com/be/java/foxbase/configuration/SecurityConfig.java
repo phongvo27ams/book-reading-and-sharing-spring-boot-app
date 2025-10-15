@@ -2,6 +2,7 @@ package com.be.java.foxbase.configuration;
 
 import com.be.java.foxbase.handler.GoogleAuthSuccessHandler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -33,6 +34,9 @@ public class SecurityConfig {
     private final String[] PUBLIC_EXPLORE_ENDPOINTS = {
             "/books/{id}", "/ratings/count"
     };
+
+    @Value("${client.domain}")
+    private String CLIENT_DOMAIN;
 
     @Autowired
     private CustomJwtDecoder customJwtDecoder;
@@ -67,7 +71,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(List.of(CLIENT_DOMAIN));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true); // Only needed if you're sending cookies or Authorization
