@@ -9,17 +9,20 @@ import com.be.java.foxbase.dto.response.RatingResponse;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.Date;
 
 @Component
 public class RatingMapper {
-    public RatingResponse toRatingResponse(Rating rating, User user){
+    public RatingResponse toRatingResponse(Rating rating, User user) {
         return RatingResponse.builder()
-                .creatorUsername(rating.getUser().getUsername())
-                .creatorFName(user.getFName())
-                .creatorLName(user.getLName())
-                .creatorAvatar(user.getAvatar())
-                .ratedBookId(rating.getUserBookRatingId().getRatedBookId())
+                // Use ID value to avoid forcing lazy-load of missing User
+                .creatorUsername(
+                        rating.getUserBookRatingId() != null ? rating.getUserBookRatingId().getCreatorUsername() : null)
+                // Null-safe user fields
+                .creatorFName(user != null ? user.getFName() : null)
+                .creatorLName(user != null ? user.getLName() : null)
+                .creatorAvatar(user != null ? user.getAvatar() : null)
+                .ratedBookId(
+                        rating.getUserBookRatingId() != null ? rating.getUserBookRatingId().getRatedBookId() : null)
                 .rate(rating.getRate())
                 .loves(rating.getLoves())
                 .likes(rating.getLikes())
@@ -29,10 +32,13 @@ public class RatingMapper {
                 .build();
     }
 
-    public RatingResponse toRatingResponse(Rating rating){
+    public RatingResponse toRatingResponse(Rating rating) {
         return RatingResponse.builder()
-                .creatorUsername(rating.getUser().getUsername())
-                .ratedBookId(rating.getUserBookRatingId().getRatedBookId())
+                // Use composite id to avoid lazy load of user
+                .creatorUsername(
+                        rating.getUserBookRatingId() != null ? rating.getUserBookRatingId().getCreatorUsername() : null)
+                .ratedBookId(
+                        rating.getUserBookRatingId() != null ? rating.getUserBookRatingId().getRatedBookId() : null)
                 .rate(rating.getRate())
                 .loves(rating.getLoves())
                 .likes(rating.getLikes())
@@ -42,7 +48,7 @@ public class RatingMapper {
                 .build();
     }
 
-    public Rating toRating(RatingRequest ratingRequest, User creator, Book ratedBook){
+    public Rating toRating(RatingRequest ratingRequest, User creator, Book ratedBook) {
         return Rating.builder()
                 .userBookRatingId(new UserBookRatingId(creator.getUsername(), ratingRequest.getRatedBookId()))
                 .user(creator)

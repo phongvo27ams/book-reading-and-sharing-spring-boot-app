@@ -25,7 +25,8 @@ public class InteractionController {
     }
 
     @PostMapping("/count")
-    ApiResponse<Map<InteractionType, Integer>> countInteractions(@RequestBody UserInteractionRequest interactionRequest) {
+    ApiResponse<Map<InteractionType, Integer>> countInteractions(
+            @RequestBody UserInteractionRequest interactionRequest) {
         return ApiResponse.<Map<InteractionType, Integer>>builder()
                 .data(interactionService.countInteractions(interactionRequest))
                 .build();
