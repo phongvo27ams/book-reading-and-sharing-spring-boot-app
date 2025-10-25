@@ -4,9 +4,10 @@ import com.be.java.foxbase.db.key.UserBookRatingId;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Entity
 @Data
@@ -21,6 +22,7 @@ public class Rating {
     @ManyToOne(fetch = FetchType.LAZY)
     @MapsId("creatorUsername")
     @JoinColumn(name = "creator_username")
+    @NotFound(action = NotFoundAction.IGNORE)
     User user;
 
     @ManyToOne(fetch = FetchType.LAZY)

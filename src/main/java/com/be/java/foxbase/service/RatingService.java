@@ -37,42 +37,50 @@ public class RatingService {
     }
 
     public PaginatedResponse<RatingResponse> getBookRatings(Long bookId, Pageable pageable) {
-        var ratings = ratingRepository.findByBook_BookId(bookId, pageable);
-        var responses = ratings.stream().map(item -> {
-            var user = item.getUser();
-            return ratingMapper.toRatingResponse(item, user);
-        }).toList();
-        return PaginatedResponse.<RatingResponse>builder()
-                .content(responses)
-                .totalElements(ratings.getTotalElements())
-                .totalPages(ratings.getTotalPages())
-                .size(ratings.getSize())
-                .page(ratings.getNumber())
-                .build();
+        try {
+            var ratings = ratingRepository.findByBook_BookId(bookId, pageable);
+            var responses = ratings.getContent().stream().map(item -> {
+                // Avoid touching item.getUser() to prevent lazy-load of missing user
+                String creator = item.getUserBookRatingId() != null ? item.getUserBookRatingId().getCreatorUsername()
+                        : null;
+                User user = creator != null ? userRepository.findByUsername(creator).orElse(null) : null;
+                return ratingMapper.toRatingResponse(item, user);
+            }).toList();
+            return PaginatedResponse.<RatingResponse>builder()
+                    .content(responses)
+                    .totalElements(ratings.getTotalElements())
+                    .totalPages(ratings.getTotalPages())
+                    .size(ratings.getSize())
+                    .page(ratings.getNumber())
+                    .build();
+        } catch (Exception e) {
+            System.out.println("Repository error: " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
-    public RatingResponse createRating(RatingRequest ratingRequest){
+    public RatingResponse createRating(RatingRequest ratingRequest) {
         User creator = userRepository.findByUsername(getCurrentUsername()).orElseThrow(
-                () -> new AppException(ErrorCode.USER_NOT_EXIST)
-        );
+                () -> new AppException(ErrorCode.USER_NOT_EXIST));
 
         Book ratedBook = bookRepository.findByBookId(ratingRequest.getRatedBookId()).orElseThrow(
-                () -> new AppException(ErrorCode.BOOK_NOT_FOUND)
-        );
+                () -> new AppException(ErrorCode.BOOK_NOT_FOUND));
 
         Rating rating = ratingMapper.toRating(ratingRequest, creator, ratedBook);
-        ratingRepository.save(ratingMapper.toRating(ratingRequest, creator, ratedBook));
+        Rating saved = ratingRepository.save(rating);
+        return ratingMapper.toRatingResponse(saved, creator);
+    }
+
+    public RatingResponse getMyRating(Long bookId) {
+        System.out.println("Check ");
+        Rating rating = ratingRepository.findByUserBookRatingId(new UserBookRatingId(getCurrentUsername(), bookId))
+                .orElseThrow(
+                        () -> new AppException(ErrorCode.RATING_NOT_FOUND));
         return ratingMapper.toRatingResponse(rating);
     }
 
-    public RatingResponse getMyRating(Long bookId){
-        Rating rating = ratingRepository.findByUserBookRatingId(new UserBookRatingId(getCurrentUsername(), bookId)).orElseThrow(
-                () -> new AppException(ErrorCode.RATING_NOT_FOUND)
-        );
-        return ratingMapper.toRatingResponse(rating);
-    }
-
-    public Long countingBookRating(Long bookId){
+    public Long countingBookRating(Long bookId) {
         return ratingRepository.countByBook_BookId(bookId);
     }
 }

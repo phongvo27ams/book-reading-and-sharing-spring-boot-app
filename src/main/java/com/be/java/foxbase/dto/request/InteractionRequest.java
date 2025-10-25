@@ -21,4 +21,7 @@ public class InteractionRequest {
 
     @Enumerated(EnumType.STRING)
     InteractionType action;
+
+    @JsonProperty("interactUsername")
+    String interactUsername;
 }
