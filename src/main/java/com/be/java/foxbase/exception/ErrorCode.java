@@ -25,6 +25,12 @@ public enum ErrorCode {
     UNMATCHED_EMAIL(2002, "Unmatched email", HttpStatus.BAD_REQUEST),
     NO_SECURITY_OTP(2003, "No Security OTP", HttpStatus.BAD_REQUEST),
     EMAIL_ALREADY_USED(2004, "Email already used", HttpStatus.BAD_REQUEST),
+    FILE_SIZE_EXCEEDED(413, "File size exceeds 50MB limit!", HttpStatus.PAYLOAD_TOO_LARGE),
+    INVALID_FILE_FORMAT(400, "Unsupported file format", HttpStatus.BAD_REQUEST),
+    MISSING_FILE(400, "Missing required upload file", HttpStatus.BAD_REQUEST),
+    MISSING_FILE_PDF(400, "PDF file is required.", HttpStatus.BAD_REQUEST),
+    MISSING_FILE_COVER(400, "Cover image is required.", HttpStatus.BAD_REQUEST),
+    FILE_UPLOAD_FAILED(500, "Upload failed.", HttpStatus.INTERNAL_SERVER_ERROR),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {

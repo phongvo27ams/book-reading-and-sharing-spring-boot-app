@@ -12,8 +12,9 @@ import org.springframework.web.bind.annotation.*;
 
 import org.springframework.http.MediaType;                 // <-- thêm
 import org.springframework.web.multipart.MultipartFile;  // <-- thêm
-import com.fasterxml.jackson.databind.ObjectMapper;  
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -121,18 +122,14 @@ public class BookController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ApiResponse<BookResponse> uploadBook(
             @RequestPart("meta") String metaJson,
-            @RequestPart("pdf") MultipartFile pdfFile,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdfFile,
             @RequestPart(value = "cover", required = false) MultipartFile coverFile
-    ) {
-        try {
-                ObjectMapper mapper = new ObjectMapper();
-                BookCreationRequest meta = mapper.readValue(metaJson, BookCreationRequest.class);
+    ) throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        BookCreationRequest meta = mapper.readValue(metaJson, BookCreationRequest.class);
 
-                return ApiResponse.<BookResponse>builder()
-                        .data(bookService.uploadAndPublish(meta, pdfFile, coverFile))
-                        .build();
-        } catch (Exception e) {
-                throw new RuntimeException("Lỗi parse JSON meta: " + e.getMessage());
-        }
+        return ApiResponse.<BookResponse>builder()
+                .data(bookService.uploadAndPublish(meta, pdfFile, coverFile))
+                .build();
     }
 }

@@ -63,6 +63,32 @@ public class BookService {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
+    private void validateBookFileType(MultipartFile file) {
+        String filename = file.getOriginalFilename();
+        String contentType = file.getContentType();
+
+        // PDF, EPUB, MOBI are allowed
+        List<String> allowedExtensions = List.of("pdf", "epub", "mobi");
+        List<String> allowedMimeTypes = List.of(
+                "application/pdf",
+                "application/epub+zip",
+                "application/x-mobipocket-ebook"
+        );
+
+        // Get file extension
+        String extension = "";
+        if (filename != null && filename.contains(".")) {
+            extension = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+        }
+
+        boolean isExtensionValid = allowedExtensions.contains(extension);
+        boolean isMimeValid = allowedMimeTypes.contains(contentType);
+
+        if (!isExtensionValid || !isMimeValid) {
+            throw new AppException(ErrorCode.INVALID_FILE_FORMAT);
+        }
+    }
+
     public BookResponse publish(BookCreationRequest request){
         var book = bookMapper.toBook(request);
 
@@ -275,11 +301,23 @@ public class BookService {
 
   public BookResponse uploadAndPublish(BookCreationRequest meta, MultipartFile pdf, MultipartFile cover) {
     try {
+      // Check null
       if (pdf == null || pdf.isEmpty()) {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PDF file is required.");
+          throw new AppException(ErrorCode.MISSING_FILE_PDF);
       }
-      if (cover == null || cover.isEmpty()) {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cover image is required.");
+      if (cover == null) {
+          throw new AppException(ErrorCode.MISSING_FILE_COVER);
+      }
+
+      // Check file type
+      validateBookFileType(pdf);
+
+      // Check empty
+      if (pdf.isEmpty()) {
+          throw new AppException(ErrorCode.MISSING_FILE_PDF);
+      }
+      if (cover.isEmpty()) {
+          throw new AppException(ErrorCode.MISSING_FILE_COVER);
       }
 
       Map<String, Object> pdfRes = cloudinaryService.uploadPdf(pdf);

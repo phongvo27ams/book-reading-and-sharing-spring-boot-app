@@ -125,7 +125,7 @@
               "pm.test('Missing cover - should return 400', function() {",
               "    pm.response.to.have.status(400);",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.message).to.include('Uncategorized error');",
+              "    pm.expect(jsonData.message).to.include('Cover image is required');",
               "});"
             ]
           }
@@ -152,6 +152,11 @@
               "value": "{ \"title\": \"Missing PDF\", \"author\": \"Boundary Test\", \"description\": \"No PDF file provided.\", \"genre\": \"Test\", \"price\": 49 }"
             },
             {
+              "key": "pdf",
+              "type": "file",
+              "src": ""
+            },
+            {
               "key": "cover",
               "type": "file",
               "src": "src/test/newman/data/book-cover.png"
@@ -167,7 +172,7 @@
               "pm.test('Missing PDF - should return 400', function() {",
               "    pm.response.to.have.status(400);",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.error).to.include('Bad Request');",
+              "    pm.expect(jsonData.message).to.include('PDF file is required');",
               "});"
             ]
           }
@@ -175,7 +180,101 @@
       ]
     },
     {
-      "name": "Test 003: Upload and Publish Book",
+      "name": "Test 003: Upload Invalid File Type",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{base_url}}/books/upload",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "meta",
+              "type": "text",
+              "value": "{ \"title\": \"Invalid File\", \"author\": \"Format Test\", \"description\": \"Wrong file format.\", \"genre\": \"Test\", \"price\": 10 }"
+            },
+            {
+              "key": "pdf",
+              "type": "file",
+              "src": "src/test/newman/data/invalid-file.txt"
+            },
+            {
+              "key": "cover",
+              "type": "file",
+              "src": "src/test/newman/data/book-cover.png"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Invalid file - should return 400', function() {",
+              "    pm.response.to.have.status(400);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.message).to.include('Unsupported file format');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test 004: Upload Oversized File",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{base_url}}/books/upload",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "meta",
+              "type": "text",
+              "value": "{ \"title\": \"Oversized File\", \"author\": \"Boundary Test\", \"description\": \"File exceeds allowed size.\", \"genre\": \"Performance\", \"price\": 30 }"
+            },
+            {
+              "key": "pdf",
+              "type": "file",
+              "src": "src/test/newman/data/oversized-book.pdf"
+            },
+            {
+              "key": "cover",
+              "type": "file",
+              "src": "src/test/newman/data/book-cover.png"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Oversized file - should return 413', function() {",
+              "    pm.response.to.have.status(413);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.message).to.include('File size exceeds 50MB limit');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test 005: Upload and Publish Book",
       "request": {
         "method": "POST",
         "header": [

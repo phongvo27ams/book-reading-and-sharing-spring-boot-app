@@ -29,7 +29,7 @@ Built with a modern, scalable backend stack to support authentication, content m
 - Run the test profile:
 
 ```
-./gradlew bootRun --args='--spring.profiles.active=test'
+.\gradlew bootRun --args='--spring.profiles.active=test'
 ```
 
 - Run the integration tests:
