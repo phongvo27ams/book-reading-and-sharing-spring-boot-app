@@ -24,7 +24,6 @@ public interface RatingRepository extends JpaRepository<Rating, UserBookRatingId
 
     long countByBook_BookId(Long id);
 
-    @Query("SELECT AVG(r.rate) FROM Rating r WHERE r.book.bookId = :id ")
+    @Query("SELECT ROUND(AVG(r.rate), 1) FROM Rating r WHERE r.book.bookId = :id")
     Double findBookAverageRating(@Param("id") Long id);
-
 }

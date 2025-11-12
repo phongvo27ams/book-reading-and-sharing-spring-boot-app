@@ -61,6 +61,14 @@ public class RatingService {
     }
 
     public RatingResponse createRating(RatingRequest ratingRequest) {
+        if (ratingRequest.getRate() < 0 || ratingRequest.getRate() > 5) {
+            throw new AppException(ErrorCode.INVALID_RATE);
+        }
+
+        if (ratingRequest.getComment() != null && ratingRequest.getComment().length() > 100) {
+            throw new AppException(ErrorCode.INVALID_COMMENT);
+        }
+        
         User creator = userRepository.findByUsername(getCurrentUsername()).orElseThrow(
                 () -> new AppException(ErrorCode.USER_NOT_EXIST));
 
