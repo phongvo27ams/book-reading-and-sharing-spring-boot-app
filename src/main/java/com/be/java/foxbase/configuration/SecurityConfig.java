@@ -2,7 +2,6 @@ package com.be.java.foxbase.configuration;
 
 import com.be.java.foxbase.handler.GoogleAuthSuccessHandler;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.util.List;
 
@@ -33,9 +33,10 @@ public class SecurityConfig {
     private final String[] PUBLIC_EXPLORE_ENDPOINTS = {
             "/books/{id}", "/ratings/count"
     };
-
-    @Value("${client.domain}")
-    private String CLIENT_DOMAIN;
+    
+    private final String[] PUBLIC_WEBHOOK_ENDPOINTS = {
+            "/zalopay/webhook"
+    };
 
     @Autowired
     private CustomJwtDecoder customJwtDecoder;
@@ -51,7 +52,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, PUBLIC_AUTH_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_EXPLORE_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.POST, "/books/filter").permitAll()
-                        .requestMatchers(HttpMethod.DELETE, "/test/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, PUBLIC_WEBHOOK_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 ->
@@ -71,7 +72,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(CLIENT_DOMAIN));
+        config.setAllowedOrigins(List.of("http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true); // Only needed if you're sending cookies or Authorization
