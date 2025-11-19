@@ -1,12 +1,17 @@
 package com.be.java.foxbase.service;
 
+import com.be.java.foxbase.configuration.ZaloPayConfig;
 import com.be.java.foxbase.db.entity.Book;
+import com.be.java.foxbase.db.entity.Order;
+import com.be.java.foxbase.db.entity.PaymentTransaction;
 import com.be.java.foxbase.db.entity.PurchasedBook;
 import com.be.java.foxbase.db.entity.User;
 import com.be.java.foxbase.db.key.UserBookId;
 import com.be.java.foxbase.dto.request.PurchaseBookRequest;
 import com.be.java.foxbase.dto.request.PurchaseWalletRequest;
 import com.be.java.foxbase.dto.request.ZaloPayOrderRequest;
+import com.be.java.foxbase.dto.response.CreateOrderResponse;
+import com.be.java.foxbase.dto.response.OrderStatusResponse;
 import com.be.java.foxbase.dto.response.PurchaseBookResponse;
 import com.be.java.foxbase.dto.response.PurchaseWalletResponse;
 import com.be.java.foxbase.dto.response.ZaloPayOrderResponse;
@@ -15,11 +20,15 @@ import com.be.java.foxbase.dto.zalopay.Order;
 import com.be.java.foxbase.exception.AppException;
 import com.be.java.foxbase.exception.ErrorCode;
 import com.be.java.foxbase.repository.BookRepository;
+import com.be.java.foxbase.repository.OrderRepository;
+import com.be.java.foxbase.repository.PaymentTransactionRepository;
 import com.be.java.foxbase.repository.PurchasedBookRepository;
 import com.be.java.foxbase.repository.UserRepository;
+import com.be.java.foxbase.utils.OrderStatus;
 import com.be.java.foxbase.vn.zalopay.crypto.HMACUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import net.minidev.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
@@ -27,17 +36,18 @@ import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
+@Slf4j
 public class PurchaseService {
     @Autowired
     private UserRepository userRepository;
@@ -48,17 +58,21 @@ public class PurchaseService {
     @Autowired
     private PurchasedBookRepository purchasedBookRepository;
 
-    private boolean isProcessing = false;
-    private boolean enabledScheduling = false;
-    private String currentTransId = null;
-    private Long currentTransBookId = null;
-    private String currentUsername = null;
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private PaymentTransactionRepository paymentTransactionRepository;
+
+    @Autowired
+    private ZaloPayConfig zaloPayConfig;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private final WebClient webClient = WebClient.create();
-    private final int appid = 554;
-    private final String key1 = "8NdU5pG5R2spGHGhyO99HN1OhD8IQJBn";
 
-    private String getCurrentUsername(){
+    private String getCurrentUsername() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
@@ -109,179 +123,332 @@ public class PurchaseService {
                 .build();
     }
 
-    private ZaloPayOrderResponse sendOrderRequest(Order order){
-        // Prepare form data
-        MultiValueMap<String, String> formData = getStringStringMultiValueMap(order);
+    @Transactional
+    public CreateOrderResponse createOrder(ZaloPayOrderRequest zaloPayOrderRequest) {
+        String username = getCurrentUsername();
+        Long bookId = zaloPayOrderRequest.getItem().getBookId();
 
-        // Send the request with WebClient
-        String createOrderEndpoint = "https://sandbox.zalopay.com.vn/v001/tpe/createorder";
-        return webClient.post()
-                .uri(createOrderEndpoint)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue(formData)
-                .retrieve()
-                .bodyToMono(ZaloPayOrderResponse.class) // Expect a ZaloPayOrderResponse
-                .block(); // Make it synchronous, if needed
-    }
+        log.info("Creating ZaloPay order for username={}, bookId={}", username, bookId);
 
-    private static MultiValueMap<String, String> getStringStringMultiValueMap(Order order) {
-        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-        formData.add("appid", String.valueOf(order.getAppid()));
-        formData.add("apptransid", order.getApptransid());
-        formData.add("appuser", order.getAppuser());
-        formData.add("amount", String.valueOf(order.getAmount()));
-        formData.add("apptime", String.valueOf(order.getApptime()));
-        formData.add("embeddata", order.getEmbeddata());
-        formData.add("item", order.getItem());
-        formData.add("mac", order.getMac());
-        return formData;
-    }
-
-    public Pair<Integer, ZaloPayOrderResponse> createOrder(ZaloPayOrderRequest zaloPayOrderRequest) {
-        // if service is processing an order, deny
-        if (isProcessing) return Pair.of(-1, ZaloPayOrderResponse.builder().build());
-
-        isProcessing = true;
-        // zalopay sandbox info
-        Map<String,String> embeddata = new HashMap<>(){
-            {
-                put("merchantinfo","fox-base");
-                put("redirecturl", "http://localhost:5173/book/detail");
-            }
-        };
-
-        currentTransId = LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd")) + "_" + UUID.randomUUID();
-        currentTransBookId = zaloPayOrderRequest.getItem().getBookId();
-        Long apptime = System.currentTimeMillis();
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        ObjectNode node = objectMapper.convertValue(zaloPayOrderRequest.getItem(), ObjectNode.class);
-        String item = node.toString();
-        String strEmbeddata = new JSONObject(embeddata).toString();
-
-        List<String> list = Arrays.asList(
-                String.valueOf(appid), // appid
-                currentTransId,             // apptransid
-                getCurrentUsername(),   // appuser
-                zaloPayOrderRequest.getAmount().toString(), // amount
-                apptime.toString(),     // apptime
-                strEmbeddata,           // embeddata
-                node.toString());       // item
-
-        String macInput = String.join("|", list);
-        String mac = HMACUtil.HMacHexStringEncode(HMACUtil.HMACSHA256, key1, macInput);
-
-        Order order = Order.builder()
-                .appid(appid)
-                .appuser(getCurrentUsername())
-                .apptime(apptime)
-                .amount(zaloPayOrderRequest.getAmount())
-                .apptransid(currentTransId)
-                .item(item)
-                .embeddata(strEmbeddata)
-                .mac(mac)
-                .build();
-
-        currentUsername = getCurrentUsername();
-        User user = userRepository.findByUsername(getCurrentUsername()).orElseThrow(
+        User user = userRepository.findByUsername(username).orElseThrow(
                 () -> new AppException(ErrorCode.USER_NOT_EXIST)
         );
-
-        var bookId = zaloPayOrderRequest.getItem().getBookId();
 
         Book book = bookRepository.findById(bookId).orElseThrow(
                 () -> new AppException(ErrorCode.BOOK_NOT_FOUND)
         );
 
-        PurchasedBook purchasedBook = PurchasedBook.builder()
-                .book(book)
+        List<Order> userOrders = orderRepository.findByUser_Username(username);
+        Order existingPendingOrder = userOrders.stream()
+                .filter(o -> o.getStatus() == OrderStatus.PENDING && o.getBook().getBookId().equals(bookId))
+                .findFirst()
+                .orElse(null);
+
+        if (existingPendingOrder != null) {
+            log.warn("User {} already has a pending order for bookId={}, appTransId={}", 
+                    username, bookId, existingPendingOrder.getAppTransId());
+            return null;
+        }
+
+        String appTransId = LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd")) + "_" + UUID.randomUUID();
+        Long appTime = System.currentTimeMillis();
+        Map<String, String> embeddata = new HashMap<>() {
+            {
+                put("merchantinfo", "fox-base");
+                put("redirecturl", "http://localhost:5173/book/detail?id=" + bookId);
+            }
+        };
+
+        ObjectNode node = objectMapper.convertValue(zaloPayOrderRequest.getItem(), ObjectNode.class);
+        String item = node.toString();
+        String strEmbeddata = new JSONObject(embeddata).toString();
+        List<String> macList = Arrays.asList(
+                String.valueOf(zaloPayConfig.getAppIdInt()),
+                appTransId,
+                username,
+                zaloPayOrderRequest.getAmount().toString(),
+                appTime.toString(),
+                strEmbeddata,
+                item
+        );
+
+        String macInput = String.join("|", macList);
+        String mac = HMACUtil.HMacHexStringEncode(HMACUtil.HMACSHA256, zaloPayConfig.getKey1(), macInput);
+
+        log.info("Generated MAC for appTransId={}", appTransId);
+        Order order = Order.builder()
+                .appTransId(appTransId)
                 .user(user)
-                .id(new UserBookId(getCurrentUsername(), bookId))
-                .paid(false)
+                .book(book)
+                .amount(zaloPayOrderRequest.getAmount())
+                .appTime(appTime)
+                .embedData(strEmbeddata)
+                .item(item)
+                .status(OrderStatus.PENDING)
                 .createdAt(LocalDateTime.now())
-                .paidAt(null)
+                .expiredAt(LocalDateTime.now().plusMinutes(15))
+                .webhookReceived(false)
+                .queryAttempts(0)
                 .build();
 
+        orderRepository.save(order);
+        UserBookId userBookId = new UserBookId(username, bookId);
+        PurchasedBook purchasedBook = purchasedBookRepository.findById(userBookId)
+                .orElse(PurchasedBook.builder()
+                        .id(userBookId)
+                        .user(user)
+                        .book(book)
+                        .paid(false)
+                        .createdAt(LocalDateTime.now())
+                        .paidAt(null)
+                        .build());
+
+        purchasedBook.setPaid(false);
         purchasedBookRepository.save(purchasedBook);
-        var response = sendOrderRequest(order);
+        Order orderRequest = Order.builder()
+                .appid(zaloPayConfig.getAppIdInt())
+                .appuser(username)
+                .apptime(appTime)
+                .amount(zaloPayOrderRequest.getAmount())
+                .apptransid(appTransId)
+                .item(item)
+                .embeddata(strEmbeddata)
+                .mac(mac)
+                .build();
+        ZaloPayOrderResponse response;
+        try {
+            response = sendOrderRequest(orderRequest);
+            PaymentTransaction transaction = PaymentTransaction.builder()
+                    .appTransId(appTransId)
+                    .source("create_order")
+                    .requestData(toJson(orderRequest))
+                    .responseData(toJson(response))
+                    .returnCode(response.getReturncode())
+                    .returnMessage(response.getReturnmessage())
+                    .macValid(true)
+                    .build();
+            paymentTransactionRepository.save(transaction);
 
-        enabledScheduling = true;
+            log.info("ZaloPay order created successfully for appTransId={}, returnCode={}", 
+                    appTransId, response.getReturncode());
 
-        return Pair.of(1, response);
-    }
+        } catch (Exception e) {
+            log.error("Error creating ZaloPay order for appTransId={}: {}", appTransId, e.getMessage(), e);
+            PaymentTransaction transaction = PaymentTransaction.builder()
+                    .appTransId(appTransId)
+                    .source("create_order")
+                    .requestData(toJson(orderRequest))
+                    .errorMessage(e.getMessage())
+                .build();
+            paymentTransactionRepository.save(transaction);
 
-    private boolean sendStatusQueryRequest(MultiValueMap<String, String> params) {
-        String statusQueryEndpoint = "https://sandbox.zalopay.com.vn/v001/tpe/getstatusbyapptransid";
-        var response = webClient.post()
-                .uri(statusQueryEndpoint)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue(params)
-                .retrieve()
-                .bodyToMono(ZaloPayPaymentStatusResponse.class)
-                .block();
+            // Cập nhật order status
+            order.setStatus(OrderStatus.FAILED);
+            order.setFailureReason("Failed to create order: " + e.getMessage());
+            orderRepository.save(order);
 
-        if (response != null) {
-            return response.getReturncode() == 1;
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-        return false;
+        return CreateOrderResponse.builder()
+                .appTransId(appTransId)
+                .zaloPayResponse(response)
+                .build();
     }
 
-    private boolean paymentSuccess(){
-        String input = appid + "|" + currentTransId + "|" + key1;
-        String mac = HMACUtil.HMacHexStringEncode(HMACUtil.HMACSHA256, key1, input);
+    private ZaloPayOrderResponse sendOrderRequest(Order orderRequest) {
+        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+        formData.add("appid", String.valueOf(orderRequest.getAppid()));
+        formData.add("apptransid", orderRequest.getApptransid());
+        formData.add("appuser", orderRequest.getAppuser());
+        formData.add("amount", String.valueOf(orderRequest.getAmount()));
+        formData.add("apptime", String.valueOf(orderRequest.getApptime()));
+        formData.add("embeddata", orderRequest.getEmbeddata());
+        formData.add("item", orderRequest.getItem());
+        formData.add("mac", orderRequest.getMac());
+
+        return webClient.post()
+                .uri(zaloPayConfig.getCreateOrderEndpoint())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .bodyValue(formData)
+                .retrieve()
+                .bodyToMono(ZaloPayOrderResponse.class)
+                .block();
+    }
+
+    public ZaloPayPaymentStatusResponse queryPaymentStatus(String appTransId) {
+        log.info("Querying payment status for appTransId={}", appTransId);
+
+        Order order = orderRepository.findByAppTransId(appTransId)
+                .orElseThrow(() -> new AppException(ErrorCode.BOOK_NOT_FOUND));
+        String macInput = zaloPayConfig.getAppIdInt() + "|" + appTransId + "|" + zaloPayConfig.getKey1();
+        String mac = HMACUtil.HMacHexStringEncode(HMACUtil.HMACSHA256, zaloPayConfig.getKey1(), macInput);
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("appid", String.valueOf(appid));
-        params.add("apptransid", currentTransId);
+        params.add("appid", String.valueOf(zaloPayConfig.getAppIdInt()));
+        params.add("apptransid", appTransId);
         params.add("mac", mac);
 
-        return sendStatusQueryRequest(params);
+        try {
+            ZaloPayPaymentStatusResponse response = webClient.post()
+                    .uri(zaloPayConfig.getStatusQueryEndpoint())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(params)
+                    .retrieve()
+                    .bodyToMono(ZaloPayPaymentStatusResponse.class)
+                    .block();
+            PaymentTransaction transaction = PaymentTransaction.builder()
+                    .appTransId(appTransId)
+                    .source("scheduled_query")
+                    .requestData(toJson(params))
+                    .responseData(toJson(response))
+                    .returnCode(response.getReturncode())
+                    .returnMessage(response.getReturnmessage())
+                    .zpTransId(response.getZptransid())
+                    .macValid(true)
+                    .build();
+            paymentTransactionRepository.save(transaction);
+            updateOrderStatusFromResponse(order, response);
+
+            log.info("Payment status queried for appTransId={}, returnCode={}", appTransId, response.getReturncode());
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error querying payment status for appTransId={}: {}", appTransId, e.getMessage(), e);
+            PaymentTransaction transaction = PaymentTransaction.builder()
+                    .appTransId(appTransId)
+                    .source("scheduled_query")
+                    .requestData(toJson(params))
+                    .errorMessage(e.getMessage())
+                    .build();
+            paymentTransactionRepository.save(transaction);
+
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 
-    @Scheduled(fixedRate = 1000)
-    public void scheduledQueryStatus() {
-        if (!enabledScheduling) return;
-        boolean success = paymentSuccess();
+    @Transactional
+    public void updateOrderStatusFromResponse(Order order, ZaloPayPaymentStatusResponse response) {
+        if (order.getStatus() == OrderStatus.PAID) {
+            log.debug("Order {} already PAID, skipping status update", order.getAppTransId());
+            return;
+        }
 
-        if (success){
-            isProcessing = false;
-            currentTransId = null;
+        Integer returnCode = response.getReturncode();
+        OrderStatus newStatus = mapReturnCodeToStatus(returnCode);
 
-            PurchasedBook purchasedBook = purchasedBookRepository.findById(
-                    new UserBookId(currentUsername, currentTransBookId))
-                    .orElseThrow(() -> new AppException(ErrorCode.BOOK_NOT_FOUND));
+        order.setZpTransId(response.getZptransid());
+        order.setQueryAttempts(order.getQueryAttempts() + 1);
+
+        if (newStatus == OrderStatus.PAID) {
+            order.setStatus(OrderStatus.PAID);
+            order.setPaidAt(LocalDateTime.now());
+            updatePurchasedBook(order);
+        } else if (newStatus == OrderStatus.FAILED) {
+            order.setStatus(OrderStatus.FAILED);
+            order.setFailureReason("Payment failed - return code: " + returnCode);
+        } else if (newStatus == OrderStatus.EXPIRED) {
+            order.setStatus(OrderStatus.EXPIRED);
+            order.setExpiredAt(LocalDateTime.now());
+        }
+
+        orderRepository.save(order);
+        log.info("Updated order status for appTransId={}: {} -> {}", order.getAppTransId(), order.getStatus(), newStatus);
+    }
+
+    private OrderStatus mapReturnCodeToStatus(Integer returnCode) {
+        if (returnCode == null) {
+            return OrderStatus.PENDING;
+        }
+
+        switch (returnCode) {
+            case 1:
+                return OrderStatus.PAID;
+            case 2:
+                return OrderStatus.FAILED;
+            case -51:
+                return OrderStatus.EXPIRED;
+            default:
+                log.warn("Unknown ZaloPay return code: {}", returnCode);
+                return OrderStatus.FAILED;
+        }
+    }
+
+    private void updatePurchasedBook(Order order) {
+        try {
+            UserBookId userBookId = new UserBookId(order.getUser().getUsername(), order.getBook().getBookId());
+
+            PurchasedBook purchasedBook = purchasedBookRepository.findById(userBookId)
+                    .orElse(PurchasedBook.builder()
+                            .id(userBookId)
+                            .user(order.getUser())
+                            .book(order.getBook())
+                            .paid(false)
+                            .createdAt(order.getCreatedAt())
+                            .paidAt(null)
+                            .build());
 
             purchasedBook.setPaid(true);
-            purchasedBook.setPaidAt(LocalDateTime.now());
+            purchasedBook.setPaidAt(order.getPaidAt() != null ? order.getPaidAt() : LocalDateTime.now());
+
             purchasedBookRepository.save(purchasedBook);
 
-            enabledScheduling = false;
-            isProcessing = false;
-            currentTransId = null;
+            log.info("Updated PurchasedBook for appTransId={}, username={}, bookId={}",
+                    order.getAppTransId(), order.getUser().getUsername(), order.getBook().getBookId());
+        } catch (Exception e) {
+            log.error("Error updating PurchasedBook for appTransId={}: {}", order.getAppTransId(), e.getMessage(), e);
+        }
+    }
 
-        } else {
-            PurchasedBook purchasedBook = purchasedBookRepository.findById(
-                            new UserBookId(currentUsername, currentTransBookId))
-                    .orElseThrow(() -> new AppException(ErrorCode.BOOK_NOT_FOUND));
+    @Scheduled(fixedRate = 300000)
+    public void scheduledQueryPendingOrders() {
+        log.debug("Running scheduled query for pending orders");
 
-            var orderCreateTime = purchasedBook.getCreatedAt();
+        LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
+        List<Order> pendingOrders = orderRepository.findPendingOrdersForQuery(
+                OrderStatus.PENDING,
+                12,
+                oneHourAgo
+        );
 
-            if (Duration.between(orderCreateTime, LocalDateTime.now()).toMinutes() > 15) {
-                purchasedBookRepository.delete(purchasedBook);
-                enabledScheduling = false;
-                isProcessing = false;
-                currentTransId = null;
+        log.info("Found {} pending orders to query", pendingOrders.size());
+
+        for (Order order : pendingOrders) {
+            try {
+                queryPaymentStatus(order.getAppTransId());
+            } catch (Exception e) {
+                log.error("Error querying status for appTransId={}: {}", order.getAppTransId(), e.getMessage(), e);
             }
         }
 
+        updateExpiredOrders();
+    }
+
+    private void updateExpiredOrders() {
+        List<Order> expiredOrders = orderRepository.findExpiredOrders(OrderStatus.PENDING, LocalDateTime.now());
+
+        for (Order order : expiredOrders) {
+            order.setStatus(OrderStatus.EXPIRED);
+            order.setExpiredAt(LocalDateTime.now());
+            orderRepository.save(order);
+            log.info("Updated expired order: appTransId={}", order.getAppTransId());
+        }
     }
 
     public PurchaseBookResponse checkPaymentStatus(Long bookId) {
-        PurchasedBook purchasedBook = purchasedBookRepository.findById(new UserBookId(getCurrentUsername(), bookId)).orElseThrow(
-                () -> new AppException(ErrorCode.BOOK_NOT_FOUND)
-        );
+        String username = getCurrentUsername();
+        
+        Order order = orderRepository.findByUser_Username(username).stream()
+                .filter(o -> o.getBook().getBookId().equals(bookId))
+                .sorted((o1, o2) -> o2.getCreatedAt().compareTo(o1.getCreatedAt()))
+                .findFirst()
+                .orElse(null);
 
-        User user = userRepository.findByUsername(getCurrentUsername()).orElseThrow(
+        if (order == null) {
+            PurchasedBook purchasedBook = purchasedBookRepository.findById(new UserBookId(username, bookId))
+                    .orElseThrow(() -> new AppException(ErrorCode.BOOK_NOT_FOUND));
+
+            User user = userRepository.findByUsername(username).orElseThrow(
                 () -> new AppException(ErrorCode.USER_NOT_EXIST)
         );
 
@@ -291,7 +458,51 @@ public class PurchaseService {
                 .bookPrice(purchasedBook.getBook().getPrice())
                 .newBalance(user.getBalance())
                 .purchaseAt(purchasedBook.getPaidAt())
-                .buyer(getCurrentUsername())
+                    .buyer(username)
+                    .build();
+        }
+
+        User user = userRepository.findByUsername(username).orElseThrow(
+                () -> new AppException(ErrorCode.USER_NOT_EXIST)
+        );
+
+        boolean isPaid = order.getStatus() == OrderStatus.PAID;
+
+        return PurchaseBookResponse.builder()
+                .success(isPaid)
+                .bookTitle(order.getBook().getTitle())
+                .bookPrice(order.getBook().getPrice())
+                .newBalance(user.getBalance())
+                .purchaseAt(order.getPaidAt())
+                .buyer(username)
                 .build();
+    }
+
+    public OrderStatusResponse getOrderStatusResponse(String appTransId) {
+        Order order = orderRepository.findByAppTransId(appTransId)
+                .orElseThrow(() -> new AppException(ErrorCode.BOOK_NOT_FOUND));
+
+        return OrderStatusResponse.builder()
+                .appTransId(order.getAppTransId())
+                .bookId(order.getBook().getBookId())
+                .bookTitle(order.getBook().getTitle())
+                .amount(order.getAmount())
+                .status(order.getStatus())
+                .createdAt(order.getCreatedAt())
+                .paidAt(order.getPaidAt())
+                .expiredAt(order.getExpiredAt())
+                .failureReason(order.getFailureReason())
+                .webhookReceived(order.getWebhookReceived())
+                .queryAttempts(order.getQueryAttempts())
+                .zpTransId(order.getZpTransId())
+                .build();
+    }
+
+    private String toJson(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 }
