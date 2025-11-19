@@ -4,6 +4,8 @@ import com.be.java.foxbase.dto.request.PurchaseBookRequest;
 import com.be.java.foxbase.dto.request.PurchaseWalletRequest;
 import com.be.java.foxbase.dto.request.ZaloPayOrderRequest;
 import com.be.java.foxbase.dto.response.ApiResponse;
+import com.be.java.foxbase.dto.response.CreateOrderResponse;
+import com.be.java.foxbase.dto.response.OrderStatusResponse;
 import com.be.java.foxbase.dto.response.PurchaseBookResponse;
 import com.be.java.foxbase.dto.response.PurchaseWalletResponse;
 import com.be.java.foxbase.dto.response.ZaloPayOrderResponse;
@@ -19,17 +21,18 @@ public class PurchaseController {
 
 
     @PostMapping("book/zalo-pay/create-order")
-    ApiResponse<ZaloPayOrderResponse> createZaloPayOrder(@RequestBody ZaloPayOrderRequest zaloPayOrderRequest) {
+    ApiResponse<CreateOrderResponse> createZaloPayOrder(@RequestBody ZaloPayOrderRequest zaloPayOrderRequest) {
         var response = purchaseService.createOrder(zaloPayOrderRequest);
 
-        if (response.getFirst() == -1){
-            return ApiResponse.<ZaloPayOrderResponse>builder()
+        if (response == null){
+            return ApiResponse.<CreateOrderResponse>builder()
                     .data(null)
                     .message("Please pay your current order before creating a new one.")
                     .build();
         }
-        return ApiResponse.<ZaloPayOrderResponse>builder()
-                .data(response.getSecond())
+        
+        return ApiResponse.<CreateOrderResponse>builder()
+                .data(response)
                 .build();
     }
 
@@ -55,4 +58,14 @@ public class PurchaseController {
                 .data(purchaseService.checkPaymentStatus(bookId))
                 .build();
     }
+
+    @GetMapping("/book/zalo-pay/order-status")
+    public ApiResponse<OrderStatusResponse> getOrderStatus(
+            @RequestParam String appTransId
+    ){
+        return ApiResponse.<OrderStatusResponse>builder()
+                .data(purchaseService.getOrderStatusResponse(appTransId))
+                .build();
+    }
+
 }
