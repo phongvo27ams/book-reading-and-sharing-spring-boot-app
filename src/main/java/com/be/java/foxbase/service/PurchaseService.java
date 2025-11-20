@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import net.minidev.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -68,6 +69,9 @@ public class PurchaseService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Value("${client.domain}")
+    private String CLIENT_DOMAIN;
 
     private final WebClient webClient = WebClient.create();
 
@@ -154,7 +158,7 @@ public class PurchaseService {
         Map<String, String> embeddata = new HashMap<>() {
             {
                 put("merchantinfo", "fox-base");
-                put("redirecturl", "http://localhost:5173/book/detail?id=" + bookId);
+                put("redirecturl", CLIENT_DOMAIN + "/book/detail?id=" + bookId);
             }
         };
 
