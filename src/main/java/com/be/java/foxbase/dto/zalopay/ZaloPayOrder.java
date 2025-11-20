@@ -7,7 +7,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class Order {
+public class ZaloPayOrder {
     int appid;
     String appuser;
     Long apptime;

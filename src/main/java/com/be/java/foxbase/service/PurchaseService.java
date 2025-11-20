@@ -16,7 +16,7 @@ import com.be.java.foxbase.dto.response.PurchaseBookResponse;
 import com.be.java.foxbase.dto.response.PurchaseWalletResponse;
 import com.be.java.foxbase.dto.response.ZaloPayOrderResponse;
 import com.be.java.foxbase.dto.response.ZaloPayPaymentStatusResponse;
-import com.be.java.foxbase.dto.zalopay.Order;
+import com.be.java.foxbase.dto.zalopay.ZaloPayOrder;
 import com.be.java.foxbase.exception.AppException;
 import com.be.java.foxbase.exception.ErrorCode;
 import com.be.java.foxbase.repository.BookRepository;
@@ -31,7 +31,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import net.minidev.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.util.Pair;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -205,7 +204,7 @@ public class PurchaseService {
 
         purchasedBook.setPaid(false);
         purchasedBookRepository.save(purchasedBook);
-        Order orderRequest = Order.builder()
+        ZaloPayOrder orderRequest = ZaloPayOrder.builder()
                 .appid(zaloPayConfig.getAppIdInt())
                 .appuser(username)
                 .apptime(appTime)
@@ -255,7 +254,7 @@ public class PurchaseService {
                 .build();
     }
 
-    private ZaloPayOrderResponse sendOrderRequest(Order orderRequest) {
+    private ZaloPayOrderResponse sendOrderRequest(ZaloPayOrder orderRequest) {
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("appid", String.valueOf(orderRequest.getAppid()));
         formData.add("apptransid", orderRequest.getApptransid());
