@@ -19,6 +19,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.util.List;
 
@@ -26,6 +27,9 @@ import java.util.List;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+    @Value("${client.domain}")
+    private String CLIENT_DOMAIN;
+
     private final String[] PUBLIC_AUTH_ENDPOINTS = {
             "/users/**", "/auth/token", "/auth/introspect", "/auth/logout", "/auth/refresh"
     };
@@ -33,9 +37,10 @@ public class SecurityConfig {
     private final String[] PUBLIC_EXPLORE_ENDPOINTS = {
             "/books/{id}", "/ratings/count"
     };
-
-    @Value("${client.domain}")
-    private String CLIENT_DOMAIN;
+    
+    private final String[] PUBLIC_WEBHOOK_ENDPOINTS = {
+            "/zalopay/webhook"
+    };
 
     @Autowired
     private CustomJwtDecoder customJwtDecoder;
@@ -51,7 +56,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, PUBLIC_AUTH_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_EXPLORE_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.POST, "/books/filter").permitAll()
-                        .requestMatchers(HttpMethod.DELETE, "/test/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, PUBLIC_WEBHOOK_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 ->
