@@ -63,3 +63,6 @@ zalopay:
   sandbox: ${ZALOPAY_SANDBOX:true}
   webhook:
     allowed-ips: ${ZALOPAY_WEBHOOK_ALLOWED_IPS:}
+
+recaptcha:
+    secret: ${RECAPTCHA_SECRET:}
