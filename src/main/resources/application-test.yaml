@@ -26,8 +26,15 @@ spring:
     username:
     password:
 
+logging:
+  level:
+    com.be.java.foxbase.service: DEBUG
+
 jwt:
   secret: "this_is_a_test_secret_key_with_at_least_64_chars_long_1234567890"
   algorithm: HS512
   valid-duration: 3600
   refreshable-duration: 36000
+
+recaptcha:
+  secret: ${RECAPTCHA_SECRET:}

@@ -21,4 +21,6 @@ public class UserCreationRequest {
     String fName;
 
     Long balance;
+    @JsonProperty("captchaToken")
+    String captchaToken;
 }
