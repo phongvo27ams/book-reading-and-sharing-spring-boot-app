@@ -1,51 +1,32 @@
 package com.be.java.foxbase.configuration;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
+import java.util.List;
 
 @Configuration
-public class CorsConfig implements WebMvcConfigurer {
+public class CorsConfig {
 
-    /**
-     * FRONTEND_ORIGIN can contain a single origin or multiple origins separated by comma.
-     * Use '*' to allow all origins (not recommended for production if credentials are used).
-     */
-    @Value("${FRONTEND_ORIGIN:}")
-    private String frontendOrigin;
-
-    // fallback to CLIENT_DOMAIN if FRONTEND_ORIGIN not provided
-    @Value("${CLIENT_DOMAIN:}")
+    @Value("${client.domain:https://book-reading-and-sharing-react-app.vercel.app}")
     private String clientDomain;
 
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        String value = (frontendOrigin != null && !frontendOrigin.isBlank()) ? frontendOrigin.trim() : null;
-        if (value == null || value.isBlank()) {
-            value = (clientDomain != null && !clientDomain.isBlank()) ? clientDomain.trim() : "*";
-        }
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of(clientDomain));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
+        config.setExposedHeaders(List.of("Location"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
 
-        if ("*".equals(value)) {
-            registry.addMapping("/**")
-                    .allowedOrigins("*")
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                    .allowedHeaders("*")
-                    .allowCredentials(false)
-                    .maxAge(3600);
-        } else {
-            String[] origins = Arrays.stream(value.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toArray(String[]::new);
-            registry.addMapping("/**")
-                    .allowedOrigins(origins)
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                    .allowedHeaders("*")
-                    .allowCredentials(true)
-                    .maxAge(3600);
-        }
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }
